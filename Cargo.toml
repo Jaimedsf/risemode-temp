@@ -1,0 +1,16 @@
+[package]
+name = "risemode-temp"
+version = "0.1.0"
+edition = "2021"
+description = "Envia a temperatura da CPU para o display do water cooler Rise Mode (HID AA88:8666)"
+license = "MIT AND LGPL-2.1-or-later"
+repository = "https://github.com/Jaimedsf/risemode-temp"
+
+[dependencies]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
