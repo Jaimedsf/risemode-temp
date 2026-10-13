@@ -193,7 +193,21 @@ O PawnIO já instalado é reaproveitado.
 
 ## Instalar
 
-1. Abra a pasta `<projeto>\scripts`.
+### Pela Release (sem precisar do Rust)
+
+1. Baixe o `risemode-temp-vX.Y.Z-windows-x64.zip` em
+   [Releases](https://github.com/Jaimedsf/risemode-temp/releases) e extraia numa pasta qualquer.
+2. **Desbloqueie os arquivos.** O Windows marca o que veio da internet e se recusa a rodar os `.ps1`. Clique com o
+   botão direito no `.zip` **antes de extrair** → **Propriedades** → marque **Desbloquear** → OK. Ou, depois de
+   extrair, rode num PowerShell dentro da pasta: `Get-ChildItem | Unblock-File`.
+3. Clique com o botão direito em **`instalar.ps1`** → **Executar com o PowerShell** e aceite o UAC.
+
+O `.exe` não é assinado digitalmente, então o SmartScreen pode avisar "O Windows protegeu o computador". O SHA-256
+de cada arquivo está nas notas da Release, para você conferir com `Get-FileHash risemode-temp.exe`.
+
+### A partir do código-fonte
+
+1. Compile (veja [Recompilar](#recompilar)) e abra a pasta `<projeto>\scripts`.
 2. Clique com o botão direito em **`instalar.ps1`** → **Executar com o PowerShell**.
 3. Aceite o pedido de administrador (UAC).
 
