@@ -39,8 +39,6 @@ SHA-256 do executável instalado:
 
 ### 1. Análise do driver original
 
-- Tentei usar o [REA](https://github.com/morluto/rea) (`npx rea-agents`), mas o controle de permissões do Claude Code
-  bloqueou a execução de código baixado da internet.
 - A análise foi feita com o desmontador de IL .NET `tools\ildump.ps1`, escrito para isso. Ele usa reflexão do
   .NET Framework e **não executa nenhum código** do programa analisado.
 - Os três `.exe` do driver eram .NET. Descobri:
