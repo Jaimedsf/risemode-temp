@@ -23,7 +23,7 @@ jobs:
         # GNU é o toolchain usado nas releases; MSVC garante que compila com o compilador da Microsoft também.
         toolchain: [stable-x86_64-pc-windows-gnu, stable-x86_64-pc-windows-msvc]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Instalar Rust
         shell: bash
