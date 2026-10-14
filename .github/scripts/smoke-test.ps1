@@ -19,3 +19,4 @@ Rodar @('--help') 0 '--install'
 Rodar @('--bogus') 2 'argumento desconhecido'
 Rodar @('--send', '999') 2 '0 a 255'
 Write-Host "OK ($((Get-Item $Exe).Length) bytes)"
+exit 0   # o último exe saiu com 2 de propósito; o runner usaria esse $LASTEXITCODE
