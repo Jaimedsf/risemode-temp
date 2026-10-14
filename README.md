@@ -8,13 +8,14 @@ mostra a temperatura da CPU no display da bomba do water cooler Rise Mode.
 
 | | Original (R2.2) | risemode-temp |
 |---|---|---|
-| Arquivos | 22 arquivos, ~19 MB (.NET + LibreHardwareMonitor + 3 processos) | 1 arquivo `.exe`, ~390 KB |
+| Arquivos | 22 arquivos, ~19 MB (.NET + LibreHardwareMonitor + 3 processos) | 1 arquivo `.exe`, ~395 KB |
 | Processos | `Rise Mode Temp CPU Driver R2.2.exe` + `SendTemp.exe` | `risemode-temp.exe` |
-| RAM | dezenas de MB (runtime .NET + interface gráfica) | ~5 MB de working set, ~0,6 MB privada |
-| CPU | — | ~0,16 % de um núcleo (~0,01 % do total no Ryzen 7 5700X3D) |
+| RAM | dezenas de MB (runtime .NET + interface gráfica) | ~3,4 MB em uso (working set), 6,7 MB de memória privada confirmada |
+| CPU | — | ~0,007 % de um núcleo: 62 ms de CPU em 15 min rodando (Ryzen 7 5700X3D) |
 | Janela | interface gráfica + ícone na bandeja | nenhuma (roda invisível) |
 
-Os números do risemode-temp foram medidos em 13/10/2026, numa média de 10 s com o programa rodando.
+Os números do risemode-temp foram medidos em 14/10/2026, com a v0.2.0 instalada. A CPU é o tempo total gasto desde
+que o processo iniciou: uma amostra de poucos segundos dá 0, porque o Windows conta tempo de CPU em blocos de ~15 ms.
 
 ---
 
@@ -283,10 +284,13 @@ Pelo PowerShell:
 
 ```powershell
 $p = Get-Process risemode-temp
-"RAM: {0:N1} MB (privada {1:N1} MB)" -f ($p.WorkingSet64/1MB), ($p.PrivateMemorySize64/1MB)
-$c1 = $p.TotalProcessorTime; Start-Sleep 10; $p.Refresh()
-"CPU: {0:N3} % de um núcleo" -f (($p.TotalProcessorTime - $c1).TotalMilliseconds / 100)
+"RAM: {0:N1} MB em uso (privada {1:N1} MB)" -f ($p.WorkingSet64/1MB), ($p.PrivateMemorySize64/1MB)
+$seg = ((Get-Date) - $p.StartTime).TotalSeconds
+"CPU: {0:N0} ms em {1:N0} min = {2:N3} % de um núcleo" -f $p.TotalProcessorTime.TotalMilliseconds, ($seg/60), ($p.TotalProcessorTime.TotalMilliseconds / $seg / 10)
 ```
+
+A CPU é calculada sobre todo o tempo desde que o processo iniciou. Medir só alguns segundos costuma dar 0, porque o
+Windows conta tempo de CPU em blocos de ~15 ms e o programa gasta menos que isso.
 
 A cada segundo, o programa faz uma leitura do sensor (1 chamada ao PawnIO) e uma escrita USB. No resto do tempo fica dormindo.
 
