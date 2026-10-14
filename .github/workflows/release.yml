@@ -75,7 +75,7 @@ jobs:
 
       - name: Atestado de proveniência
         if: steps.ver.outputs.publish == 'true'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/risemode-temp.exe
