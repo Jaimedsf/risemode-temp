@@ -18,11 +18,11 @@ Os números do risemode-temp foram medidos em 13/10/2026, numa média de 10 s co
 
 ---
 
-## Estado atual (13/10/2026)
+## Estado atual (14/10/2026)
 
 | Item | Situação |
 |---|---|
-| Programa novo | ✅ instalado em `C:\Program Files\RiseModeTemp\risemode-temp.exe` e rodando (testado: display mostra a temperatura) |
+| Programa novo | ✅ **v0.2.0** (da Release) instalado em `C:\Program Files\RiseModeTemp\risemode-temp.exe` e rodando (testado: display mostra a temperatura) |
 | Início automático | ✅ tarefa agendada `RiseModeTempRs`: no logon, como administrador, sem limite de tempo, reinicia se cair |
 | Driver antigo (Rise Mode R2.2) | ❌ **desinstalado**: pasta, tarefa `Tif Task` e entrada em "Programas e Recursos" apagadas |
 | PawnIO 2.0.1.0 | ✅ **mantido** em `C:\Program Files\PawnIO`, serviço `PawnIO` rodando (necessário para ler o sensor) |
@@ -30,8 +30,8 @@ Os números do risemode-temp foram medidos em 13/10/2026, numa média de 10 s co
 | Rust (para recompilar) | ✅ instalado: rustup + toolchain `stable-x86_64-pc-windows-gnu` (rustc 1.99.0) |
 | Código-fonte e docs | ✅ `<projeto>\` |
 
-SHA-256 do executável instalado:
-`A7526C2B08CC68C43B5CFAC7E3DD0537D17B5E78199A170A6CB17B461CB7455D`
+SHA-256 do executável instalado (v0.2.0):
+`F2B9D1F4E3A0676B685A669099F6A692C82B5A6E62977450972BEEA54FA230F5`
 
 ---
 
@@ -79,7 +79,7 @@ SHA-256 do executável instalado:
    pelo XML e iniciou o programa.
 2. `remover-antigo.ps1`: guardou o `PawnIO_setup.exe`, rodou o desinstalador oficial em modo silencioso e
    limpou as sobras.
-3. Conferi tudo depois. Resultado: o [estado atual](#estado-atual-13102026) acima.
+3. Conferi tudo depois. Resultado: o [estado atual](#estado-atual-14102026) acima.
 
 ---
 
@@ -403,12 +403,13 @@ cargo test --locked
 - **Release** (`.github/workflows/release.yml`): publica sozinha quando a versão do `Cargo.toml` ainda não tem tag.
   O `.exe` publicado é o do toolchain GNU, o mesmo usado para desenvolver e testar com o hardware.
 
-Para lançar uma versão, escolha um:
+Para lançar uma versão (a `main` é protegida, então a versão muda sempre por PR):
 
-1. **Pelo GitHub:** Actions → **Release** → **Run workflow** → escolha `patch`, `minor` ou `major`. O workflow
-   incrementa a versão, compila, testa, faz o commit do bump na `main`, cria a tag `vX.Y.Z` e publica a Release.
-2. **Local:** mude `version` no `Cargo.toml`, rode `cargo build` (atualiza o `Cargo.lock`), faça commit dos dois e dê
-   push na `main`.
+1. **Pelo GitHub:** Actions → **Preparar release** → **Run workflow** → escolha `patch`, `minor` ou `major`. O
+   workflow abre o PR `release: vX.Y.Z` e roda o CI nele. Quando ficar verde, faça o merge: o workflow **Release**
+   compila, testa, cria a tag `vX.Y.Z` e publica.
+2. **Local:** numa branch, mude `version` no `Cargo.toml`, rode `cargo build` (atualiza o `Cargo.lock`), faça commit
+   dos dois, abra um PR e faça o merge depois do CI.
 
 Uma versão com sufixo (ex.: `0.3.0-rc.1`) sai como *pre-release*. A Release leva o `.zip`, o `.exe`, o
 `SHA256SUMS.txt` e um [atestado de proveniência](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
@@ -416,6 +417,24 @@ que prova que o `.exe` foi compilado pelo GitHub Actions a partir deste reposit�
 
 ```powershell
 gh attestation verify risemode-temp.exe --repo Jaimedsf/risemode-temp
+```
+
+### Proteção da `main`
+
+A `main` tem um *ruleset* (Settings → Rules → Rulesets → `Proteger main`) que:
+
+- bloqueia push direto: toda mudança entra por pull request;
+- exige o CI verde nos dois toolchains (`stable-x86_64-pc-windows-gnu` e `stable-x86_64-pc-windows-msvc`);
+- bloqueia force push e a exclusão da branch.
+
+Como o projeto tem um mantenedor só, o PR não exige aprovação. O fluxo do dia a dia:
+
+```powershell
+git switch -c minha-mudanca
+# ... editar, commitar ...
+git push -u origin minha-mudanca
+gh pr create --fill
+gh pr merge --squash --delete-branch   # depois que o CI passar (ou use --auto para esperar sozinho)
 ```
 
 ---

@@ -1,0 +1,64 @@
+# Abre um PR "release: vX.Y.Z" com o bump de versão do Cargo.toml/Cargo.lock.
+# Ao fazer o merge do PR, o workflow Release publica a versão.
+# (A main é protegida: nada é enviado direto para ela.)
+name: Preparar release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Incremento da versão
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write        # push da branch release/vX.Y.Z
+  pull-requests: write   # abrir o PR
+  actions: write         # disparar o CI na branch (push feito com GITHUB_TOKEN não dispara workflows)
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Calcular versão
+        id: ver
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          v=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          IFS=. read -r major minor patch <<< "${v%%-*}"
+          case "$BUMP" in
+            major) v="$((major + 1)).0.0" ;;
+            minor) v="$major.$((minor + 1)).0" ;;
+            patch) v="$major.$minor.$((patch + 1))" ;;
+          esac
+          if git rev-parse -q --verify "refs/tags/v$v" > /dev/null; then
+            echo "::error::v$v já existe"
+            exit 1
+          fi
+          # Só a primeira linha `version =` (a do [package]).
+          sed -i "0,/^version = \".*\"/s//version = \"$v\"/" Cargo.toml
+          cargo metadata --format-version 1 > /dev/null   # atualiza o Cargo.lock
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Abrir PR
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          branch="release/v$V"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git commit -am "release: v$V"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" --title "release: v$V" --body "Bump para **v$V**.
+
+          Quando o CI passar, faça o merge: o workflow **Release** compila e publica a v$V automaticamente."
+          gh workflow run ci.yml --ref "$branch"

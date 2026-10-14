@@ -1,9 +1,9 @@
-# Publica uma Release quando a versão do Cargo.toml ainda não tem tag.
+# Publica uma Release quando a versão do Cargo.toml na main ainda não tem tag.
 #
-# Dois jeitos de lançar:
-#   - mudar `version` no Cargo.toml (e o Cargo.lock) e dar push na main;
-#   - Actions → Release → "Run workflow", escolhendo patch/minor/major: o workflow
-#     incrementa a versão, compila, testa, faz o commit do bump e publica.
+# A versão muda por PR (a main é protegida):
+#   - Actions → "Preparar release" → Run workflow abre o PR do bump; ou
+#   - mude `version` no Cargo.toml (e o Cargo.lock) num PR seu.
+# O merge do PR dispara este workflow. "Run workflow" aqui só republica uma versão que ficou sem tag.
 name: Release
 
 on:
@@ -11,15 +11,9 @@ on:
     branches: [main]
     paths: [Cargo.toml]
   workflow_dispatch:
-    inputs:
-      bump:
-        description: Incremento da versão antes de publicar
-        type: choice
-        options: [patch, minor, major, nenhum]
-        default: patch
 
 permissions:
-  contents: write      # commit do bump, tag e Release
+  contents: write      # tag e Release
   id-token: write      # atestado de proveniência
   attestations: write
 
@@ -48,21 +42,8 @@ jobs:
       - name: Definir versão
         id: ver
         shell: bash
-        env:
-          BUMP: ${{ inputs.bump || 'nenhum' }}
         run: |
           v=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          if [ "$BUMP" != nenhum ]; then
-            IFS=. read -r major minor patch <<< "${v%%-*}"
-            case "$BUMP" in
-              major) v="$((major + 1)).0.0" ;;
-              minor) v="$major.$((minor + 1)).0" ;;
-              patch) v="$major.$minor.$((patch + 1))" ;;
-            esac
-            # Só a primeira linha `version =` (a do [package]).
-            sed -i "0,/^version = \".*\"/s//version = \"$v\"/" Cargo.toml
-            cargo metadata --format-version 1 > /dev/null   # atualiza o Cargo.lock
-          fi
           if git rev-parse -q --verify "refs/tags/v$v" > /dev/null; then
             echo "::notice::v$v já foi publicada; nada a fazer."
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -99,15 +80,6 @@ jobs:
           subject-path: |
             dist/risemode-temp.exe
             dist/risemode-temp-v${{ steps.ver.outputs.version }}-windows-x64.zip
-
-      - name: Commit do bump
-        if: steps.ver.outputs.publish == 'true' && inputs.bump != '' && inputs.bump != 'nenhum'
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -am "release: v${{ steps.ver.outputs.version }}"
-          git push origin HEAD:${{ github.ref_name }}
 
       - name: Publicar Release
         if: steps.ver.outputs.publish == 'true'
