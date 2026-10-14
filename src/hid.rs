@@ -1,8 +1,7 @@
 //! Acesso HID cru via Win32 (o mesmo caminho que SendTemp.exe: CreateFile + WriteFile).
 
-use core::ffi::c_void;
+use crate::win::{self, CloseHandle, CreateFileW, GetLastError, Handle, WriteFile};
 
-type Handle = *mut c_void;
 const INVALID_HANDLE_VALUE: Handle = -1isize as Handle;
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
@@ -35,15 +34,6 @@ struct HidpCaps {
     counts: [u16; 10],
 }
 
-extern "system" {
-    fn CreateFileW(name: *const u16, access: u32, share: u32, sa: *mut c_void, disp: u32, flags: u32, tmpl: Handle) -> Handle;
-    fn WriteFile(h: Handle, buf: *const u8, n: u32, written: *mut u32, ov: *mut c_void) -> i32;
-    fn CloseHandle(h: Handle) -> i32;
-    fn GetLastError() -> u32;
-    fn LoadLibraryW(name: *const u16) -> Handle;
-    fn GetProcAddress(module: Handle, name: *const u8) -> *mut c_void;
-}
-
 // hid.dll / cfgmgr32.dll são carregadas em tempo de execução: o toolchain GNU não traz as import libs.
 struct Api {
     get_hid_guid: unsafe extern "system" fn(*mut Guid),
@@ -57,28 +47,22 @@ struct Api {
 
 fn api() -> &'static Api {
     static API: std::sync::OnceLock<Api> = std::sync::OnceLock::new();
-    API.get_or_init(|| unsafe {
-        let lib = |n: &str| {
-            let w: Vec<u16> = n.encode_utf16().chain(Some(0)).collect();
-            let h = LoadLibraryW(w.as_ptr());
-            assert!(!h.is_null(), "{n} não carregou");
-            h
-        };
-        fn sym<T>(lib: Handle, name: &[u8]) -> T {
-            let p = unsafe { GetProcAddress(lib, name.as_ptr()) };
-            assert!(!p.is_null(), "símbolo ausente: {}", String::from_utf8_lossy(name));
-            unsafe { core::mem::transmute_copy(&p) }
+    API.get_or_init(|| {
+        // Ambas fazem parte do Windows; se faltarem não há o que fazer além de abortar.
+        let lib = |n: &str| win::load_library(n).unwrap_or_else(|| panic!("{n} não carregou"));
+        fn sym<T>(lib: Handle, name: &core::ffi::CStr) -> T {
+            unsafe { win::symbol(lib, name) }.unwrap_or_else(|e| panic!("{e}"))
         }
         let hid = lib("hid.dll");
         let cfg = lib("cfgmgr32.dll");
         Api {
-            get_hid_guid: sym(hid, b"HidD_GetHidGuid\0"),
-            get_attributes: sym(hid, b"HidD_GetAttributes\0"),
-            get_preparsed_data: sym(hid, b"HidD_GetPreparsedData\0"),
-            free_preparsed_data: sym(hid, b"HidD_FreePreparsedData\0"),
-            get_caps: sym(hid, b"HidP_GetCaps\0"),
-            list_size: sym(cfg, b"CM_Get_Device_Interface_List_SizeW\0"),
-            list: sym(cfg, b"CM_Get_Device_Interface_ListW\0"),
+            get_hid_guid: sym(hid, c"HidD_GetHidGuid"),
+            get_attributes: sym(hid, c"HidD_GetAttributes"),
+            get_preparsed_data: sym(hid, c"HidD_GetPreparsedData"),
+            free_preparsed_data: sym(hid, c"HidD_FreePreparsedData"),
+            get_caps: sym(hid, c"HidP_GetCaps"),
+            list_size: sym(cfg, c"CM_Get_Device_Interface_List_SizeW"),
+            list: sym(cfg, c"CM_Get_Device_Interface_ListW"),
         }
     })
 }
@@ -101,26 +85,33 @@ fn hid_interfaces() -> Vec<Vec<u16>> {
         if (api().list)(&guid, core::ptr::null(), buf.as_mut_ptr(), len, CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != 0 {
             return Vec::new();
         }
-        buf.split(|&c| c == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| s.iter().copied().chain(Some(0)).collect())
-            .collect()
+        buf.split(|&c| c == 0).filter(|s| !s.is_empty()).map(|s| s.iter().copied().chain(Some(0)).collect()).collect()
     }
 }
 
 impl Device {
-    pub fn open(vid: u16, pid: u16) -> Option<Self> {
+    /// Abre a primeira interface do dispositivo que tenha relatório de saída.
+    /// O erro descreve o motivo (não encontrado / CreateFile falhou), para o chamador logar.
+    pub fn open(vid: u16, pid: u16) -> Result<Self, String> {
         let needle = format!("vid_{vid:04x}&pid_{pid:04x}");
+        let mut err = format!("display {vid:04X}:{pid:04X} não encontrado");
         for wpath in hid_interfaces() {
             let path = String::from_utf16_lossy(&wpath[..wpath.len() - 1]);
             if !path.to_lowercase().contains(&needle) {
                 continue;
             }
             unsafe {
-                let h = CreateFileW(wpath.as_ptr(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ_WRITE,
-                                    core::ptr::null_mut(), OPEN_EXISTING, 0, core::ptr::null_mut());
+                let h = CreateFileW(
+                    wpath.as_ptr(),
+                    GENERIC_READ | GENERIC_WRITE,
+                    FILE_SHARE_READ_WRITE,
+                    core::ptr::null_mut(),
+                    OPEN_EXISTING,
+                    0,
+                    core::ptr::null_mut(),
+                );
                 if h == INVALID_HANDLE_VALUE {
-                    println!("CreateFile falhou em {path}: erro {}", GetLastError());
+                    err = format!("CreateFile falhou em {path}: erro {}", GetLastError());
                     continue;
                 }
                 let mut attr = HiddAttributes { size: core::mem::size_of::<HiddAttributes>() as u32, ..Default::default() };
@@ -138,16 +129,21 @@ impl Device {
                     CloseHandle(h);
                     continue; // interface sem relatório de saída
                 }
-                return Some(Self { handle: h, path, out_len: caps.output_report_byte_length as usize });
+                return Ok(Self { handle: h, path, out_len: caps.output_report_byte_length as usize });
             }
         }
-        None
+        Err(err)
     }
 
     pub fn write(&self, report: &[u8]) -> Result<(), u32> {
         let mut written = 0u32;
-        let ok = unsafe { WriteFile(self.handle, report.as_ptr(), self.out_len.min(report.len()) as u32, &mut written, core::ptr::null_mut()) };
-        if ok == 0 { Err(unsafe { GetLastError() }) } else { Ok(()) }
+        let ok =
+            unsafe { WriteFile(self.handle, report.as_ptr(), self.out_len.min(report.len()) as u32, &mut written, core::ptr::null_mut()) };
+        if ok == 0 {
+            Err(unsafe { GetLastError() })
+        } else {
+            Ok(())
+        }
     }
 }
 

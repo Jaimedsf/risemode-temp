@@ -9,7 +9,7 @@ repository = "https://github.com/Jaimedsf/risemode-temp"
 [dependencies]
 
 [profile.release]
-opt-level = "z"
+opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"

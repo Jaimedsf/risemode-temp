@@ -303,6 +303,7 @@ O programa roda sem janela. Para ver o que está acontecendo, primeiro **pare a 
 | `risemode-temp.exe --once` | lê a temperatura, envia uma vez ao display e sai |
 | `risemode-temp.exe --send 88` | manda o valor fixo `88` ao display. Testa o USB e **não precisa de admin** |
 | `risemode-temp.exe --install` / `--uninstall` | cria/remove a tarefa agendada |
+| `risemode-temp.exe --version` / `--help` | mostra a versão / todas as opções |
 
 ### Problemas comuns
 
@@ -313,6 +314,7 @@ O programa roda sem janela. Para ver o que está acontecendo, primeiro **pare a 
 | `CreateFile falhou ... erro 32` | outro programa está com o display aberto, geralmente o driver antigo (`SendTemp.exe`). Feche-o ou rode `remover-antigo.ps1` |
 | `display AA88:8666 não encontrado` | cabo USB do display desconectado. O programa tenta de novo a cada segundo |
 | `já está rodando` | já existe uma instância (a da tarefa). Pare a tarefa antes de testar |
+| antivírus apaga ou bloqueia o `.exe` (ex.: Kaspersky `VHO:Trojan-Downloader.Win32.Remus.gen`) | falso positivo da análise heurística, comum em executáveis pequenos e sem assinatura. Confira o SHA-256 e o atestado da Release (veja abaixo), adicione uma exceção e, se quiser, reporte o falso positivo ao fabricante do antivírus |
 
 ---
 
@@ -355,6 +357,8 @@ O valor passa por uma média móvel leve (α = 0,5), porque o Tctl do Ryzen osci
 src/main.rs       laço principal, argumentos, criação da tarefa agendada (XML)
 src/pawnio.rs     cliente do PawnIO (carrega PawnIOLib.dll dinamicamente) + checagem de CPU
 src/hid.rs        enumeração (cfgmgr32) e escrita no HID (hid.dll + WriteFile)
+src/win.rs        FFI mínima com o kernel32, compartilhada pelos módulos
+.github/          CI, Release automática e scripts de smoke test/empacotamento
 third_party/pawnio-modules/  módulo PawnIO AMDFamily17 (.bin assinado + fonte .p, LGPL-2.1)
 scripts/          instalar.ps1, desinstalar.ps1, remover-antigo.ps1
 tools/ildump.ps1  desmontador de IL .NET usado na análise do driver original
@@ -379,6 +383,40 @@ cargo build --release
 
 > Se a versão antiga estiver rodando, o `cargo build` pode falhar com "Acesso negado" ao sobrescrever
 > o `.exe`. Pare a tarefa antes, ou renomeie o `.exe` antigo.
+
+Antes de mandar mudanças, rode o mesmo que o CI:
+
+```powershell
+cargo fmt --check
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+```
+
+> `opt-level = "s"` (e não `"z"`) no `Cargo.toml` é de propósito: em 13/10/2026 o build com `"z"` era apagado pelo
+> Kaspersky como falso positivo (`VHO:Trojan-Downloader.Win32.Remus.gen`), e o com `"s"` não, com só ~1 KB a mais.
+
+## CI e Releases
+
+- **CI** (`.github/workflows/ci.yml`): a cada push e pull request, no Windows, com os toolchains
+  `x86_64-pc-windows-gnu` e `x86_64-pc-windows-msvc`: formatação, clippy, testes, build release e um smoke test do
+  `.exe` (`--version`, `--help` e argumentos inválidos). O `.exe` de cada toolchain fica disponível como artefato.
+- **Release** (`.github/workflows/release.yml`): publica sozinha quando a versão do `Cargo.toml` ainda não tem tag.
+  O `.exe` publicado é o do toolchain GNU, o mesmo usado para desenvolver e testar com o hardware.
+
+Para lançar uma versão, escolha um:
+
+1. **Pelo GitHub:** Actions → **Release** → **Run workflow** → escolha `patch`, `minor` ou `major`. O workflow
+   incrementa a versão, compila, testa, faz o commit do bump na `main`, cria a tag `vX.Y.Z` e publica a Release.
+2. **Local:** mude `version` no `Cargo.toml`, rode `cargo build` (atualiza o `Cargo.lock`), faça commit dos dois e dê
+   push na `main`.
+
+Uma versão com sufixo (ex.: `0.3.0-rc.1`) sai como *pre-release*. A Release leva o `.zip`, o `.exe`, o
+`SHA256SUMS.txt` e um [atestado de proveniência](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
+que prova que o `.exe` foi compilado pelo GitHub Actions a partir deste repositório:
+
+```powershell
+gh attestation verify risemode-temp.exe --repo Jaimedsf/risemode-temp
+```
 
 ---
 
